@@ -1,14 +1,15 @@
 {
   "name": "media-browser-electron",
   "version": "1.0.0",
+  "description": "Media Browser Application",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "debug": "electron --trace-warnings --enable-logging .",
     "build": "electron-builder"
   },
   "author": "",
   "license": "ISC",
-  "description": "Media Browser Application",
   "devDependencies": {
     "@electron/remote": "^2.0.0",
     "electron": "^28.0.0",

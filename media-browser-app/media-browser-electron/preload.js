@@ -1,21 +1,43 @@
-const { contextBridge, ipcRenderer } = require('electron')
-const { promises: fsPromises, readdirSync, statSync } = require('fs')
-const path = require('path')
-const sharp = require('sharp')
+const { contextBridge, ipcRenderer } = require('electron');
+const { promises: fsPromises, readdirSync, statSync } = require('fs');
+const path = require('path');
+const sharp = require('sharp');
 
-// Expose protected methods that allow the renderer process to use
-// IPC and filesystem operations without exposing the entire objects
-contextBridge.exposeInMainWorld('api', {
+console.log('Preload script starting...');
+
+// Initialize sharp
+sharp.cache(false);
+sharp.simd(true);
+
+// Define the API to expose to renderer process
+const api = {
     // File system operations
     readFile: async (filepath, options) => {
         try {
-            return await fsPromises.readFile(filepath, options)
+            return await fsPromises.readFile(filepath, options);
         } catch (error) {
-            throw error
+            console.error('Error reading file:', error);
+            throw error;
         }
     },
-    readdirSync: (dirPath) => readdirSync(dirPath),
-    statSync: (filepath) => statSync(filepath),
+
+    readdirSync: (dirPath) => {
+        try {
+            return readdirSync(dirPath);
+        } catch (error) {
+            console.error('Error reading directory:', error);
+            throw error;
+        }
+    },
+
+    statSync: (filepath) => {
+        try {
+            return statSync(filepath);
+        } catch (error) {
+            console.error('Error getting file stats:', error);
+            throw error;
+        }
+    },
     
     // Path operations
     getPath: (...args) => path.join(...args),
@@ -27,14 +49,14 @@ contextBridge.exposeInMainWorld('api', {
     selectFolder: () => ipcRenderer.invoke('select-folder'),
     saveTranscript: (data) => ipcRenderer.invoke('save-transcript', data),
     
-    // Sharp image processing
+    // Image processing
     processImage: async (buffer) => {
         try {
             const processedBuffer = await sharp(buffer, {
                 unlimited: true,
                 sequentialRead: true
             })
-            .rotate() // Auto-rotate based on EXIF data
+            .rotate()
             .flatten({ background: { r: 255, g: 255, b: 255 } })
             .jpeg({
                 quality: 90,
@@ -44,7 +66,19 @@ contextBridge.exposeInMainWorld('api', {
 
             return processedBuffer;
         } catch (error) {
+            console.error('Error processing image:', error);
             throw error;
         }
+    },
+
+    // Shell operations
+    openExternal: (url) => {
+        const { shell } = require('electron');
+        shell.openExternal(url);
     }
-})
+};
+
+// Expose the API to the renderer process
+console.log('Exposing API to renderer process...');
+contextBridge.exposeInMainWorld('api', api);
+console.log('Preload script completed successfully');

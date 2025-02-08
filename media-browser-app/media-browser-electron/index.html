@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Media Browser</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -188,26 +189,66 @@
             cursor: pointer;
         }
 
-        .waveform {
-            height: 100%;
-            display: flex;
-            align-items: center;
-            padding: 0 10px;
-            gap: 1px;
-        }
+        .waveform-container {
+    position: relative;
+    width: 100%;
+    height: 150px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    overflow: hidden;
+}
 
-        .waveform-bar {
-            transition: background-color 0.2s;
-        }
+.playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.8);
+    pointer-events: none;
+    transition: left 0.1s linear;
+}
 
-        .playhead {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 2px;
-            background: #fff;
-            left: 0;
-        }
+.waveform-container canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Additional styles for better visual integration */
+.audio-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 20px;
+    background: rgb(126,210,243);
+}
+
+.media-controls {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.media-controls button {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 5px;
+    transition: transform 0.2s;
+}
+
+.media-controls button:hover {
+    transform: scale(1.1);
+}
 
         .photo-viewer {
             height: 50%;
@@ -302,6 +343,49 @@
         button:hover {
             background: #e5e5e5;
         }
+
+        .warning-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: rgba(255, 0, 0, 0.2);
+        padding: 10px;
+        text-align: center;
+        z-index: 1000;
+    }
+
+    .warning-message {
+        background: #fff3cd;
+        color: #856404;
+        padding: 10px;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    
+    .error-message {
+    color: #721c24;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 20px;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.error-message button {
+    margin-top: 10px;
+    padding: 8px 16px;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.error-message button:hover {
+    background-color: #c82333;
+}
+    
     </style>
 </head>
 <body>

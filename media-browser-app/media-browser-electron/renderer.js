@@ -202,48 +202,8 @@ function setupDefaultLogo() {
 async function showMedia(file) {
     elements.currentFile.textContent = file.name;
     
-    if (file.type === 'image') {
-        try {
-            console.log('Processing image file:', file.path);
-            const ext = window.api.extname(file.path).toLowerCase();
-            
-            if (ext === '.tif' || ext === '.tiff') {
-                try {
-                    console.log('Processing TIFF file...');
-                    const buffer = await window.api.readFile(file.path);
-                    console.log('TIFF file read, size:', buffer.length);
-                    
-                    const processedBuffer = await window.api.processImage(buffer);
-                    console.log('TIFF processing complete');
-                    
-                    const blob = new Blob([processedBuffer], { type: 'image/jpeg' });
-                    const url = URL.createObjectURL(blob);
-                    displayImage(url);
-                } catch (tiffError) {
-                    console.error('Detailed TIFF error:', tiffError);
-                    elements.photoArea.innerHTML = `
-                        <div class="error-message">
-                            <p>Unable to display this TIFF image</p>
-                            <p>Error details: ${tiffError.message}</p>
-                            <button onclick="window.api.openExternal('file://${file.path}')">Open in Default App</button>
-                        </div>`;
-                }
-            } else if (['.jpg', '.jpeg', '.png'].includes(ext)) {
-                console.log('Displaying regular image:', file.path);
-                displayImage(file.path);
-            } else {
-                throw new Error('Unsupported image format: ' + ext);
-            }
-        } catch (error) {
-            console.error('Error displaying image:', error);
-            elements.photoArea.innerHTML = `
-                <div class="error-message">
-                    <p>Error loading image: ${error.message}</p>
-                    <button onclick="window.api.openExternal('file://${file.path}')">Open in Default App</button>
-                </div>`;
-        }
-    } else if (file.type === 'video') {
-        // Only clear video area
+    if (file.type === 'video') {
+        // Clear video area and show loading state
         elements.videoArea.innerHTML = '';
         
         const container = document.createElement('div');
@@ -257,282 +217,213 @@ async function showMedia(file) {
         container.style.backgroundColor = '#000';
         
         const video = document.createElement('video');
+        
+        // Create a promise to handle video loading
+        const videoLoaded = new Promise((resolve, reject) => {
+            video.addEventListener('loadedmetadata', () => resolve());
+            video.addEventListener('error', (e) => reject(e));
+        });
+
+        // Set up video element
         video.src = 'file://' + file.path;
         video.style.maxWidth = '100%';
         video.style.maxHeight = 'calc(100% - 60px)';
         video.style.margin = 'auto';
         
-        // Custom video controls container
-        const videoControls = document.createElement('div');
-        videoControls.className = 'video-controls';
-        videoControls.style.width = '100%';
-        videoControls.style.padding = '10px';
-        videoControls.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        videoControls.style.position = 'absolute';
-        videoControls.style.bottom = '0';
-        videoControls.style.left = '0';
-        videoControls.style.display = 'flex';
-        videoControls.style.alignItems = 'center';
-        videoControls.style.gap = '10px';
-        videoControls.style.transition = 'opacity 0.3s';
-
-        // Create play/pause button
-        const playPauseBtn = document.createElement('button');
-        playPauseBtn.innerHTML = '⏯️';
-        playPauseBtn.onclick = () => video.paused ? video.play() : video.pause();
-
-        // Create volume container and controls
-        const volumeContainer = document.createElement('div');
-        volumeContainer.style.display = 'flex';
-        volumeContainer.style.alignItems = 'center';
-
-        // Time display
-        const timeDisplay = document.createElement('span');
-        timeDisplay.style.color = 'white';
-        timeDisplay.style.minWidth = '100px';
-        timeDisplay.style.textAlign = 'center';
-
-        // Progress container
-        const progressContainer = document.createElement('div');
-        progressContainer.style.flex = '1';
-        progressContainer.style.height = '5px';
-        progressContainer.style.backgroundColor = '#444';
-        progressContainer.style.cursor = 'pointer';
-        progressContainer.style.position = 'relative';
-        progressContainer.style.borderRadius = '2px';
-
-        const progress = document.createElement('div');
-        progress.style.width = '0%';
-        progress.style.height = '100%';
-        progress.style.backgroundColor = '#2196F3';
-        progress.style.borderRadius = '2px';
-        progress.style.transition = 'width 0.1s';
-        progressContainer.appendChild(progress);
-
-        // Add controls
-        videoControls.appendChild(playPauseBtn);
-        videoControls.appendChild(progressContainer);
-        videoControls.appendChild(volumeContainer);
-        videoControls.appendChild(timeDisplay);
-
-        // Add everything to container
-        container.appendChild(video);
-        container.appendChild(videoControls);
-        elements.videoArea.appendChild(container);
-
-    } else if (file.type === 'audio') {
-        // Only clear video area for audio files
-        elements.videoArea.innerHTML = '';
-        
-        const audioContainer = document.createElement('div');
-        audioContainer.style.width = '100%';
-        audioContainer.style.height = '100%';
-        audioContainer.style.display = 'flex';
-        audioContainer.style.flexDirection = 'column';
-        audioContainer.style.alignItems = 'center';
-        audioContainer.style.justifyContent = 'center';
-        audioContainer.style.padding = '20px';
-        
-        const waveformContainer = document.createElement('div');
-        waveformContainer.style.width = '100%';
-        waveformContainer.style.position = 'relative';
-        waveformContainer.style.backgroundColor = 'rgb(126,210,243)';
-        waveformContainer.style.borderRadius = '8px';
-        waveformContainer.style.overflow = 'hidden';
-        
-        const audio = document.createElement('audio');
-        audio.src = 'file://' + file.path;
-        audio.controls = false;
-        
-        const controls = createMediaControls(audio);
-        
-        audioContainer.appendChild(waveformContainer);
-        audioContainer.appendChild(controls);
-        elements.videoArea.appendChild(audioContainer);
-        
-        if (state.currentWaveform) {
-            state.currentWaveform.destroy();
+        try {
+            // Wait for video to load
+            await videoLoaded;
+            
+            // Initialize controls after video is loaded
+            const videoControls = await initializeVideoControls(video);
+            
+            // Add everything to container
+            container.appendChild(video);
+            container.appendChild(videoControls);
+            elements.videoArea.appendChild(container);
+            
+            // Start playing after everything is set up
+            try {
+                await video.play();
+            } catch (playError) {
+                console.log('Auto-play prevented:', playError);
+            }
+        } catch (error) {
+            console.error('Error loading video:', error);
+            elements.videoArea.innerHTML = `
+                <div class="error-message">
+                    <p>Error loading video: ${error.message}</p>
+                    <button onclick="window.api.openExternal('file://${file.path}')">
+                        Open in Default Player
+                    </button>
+                </div>`;
         }
-        state.currentWaveform = new AudioWaveform(waveformContainer, audio);
     }
-} 
-
-function displayImage(src) {
-    const container = document.createElement('div');
-    container.style.position = 'relative';
-    container.style.width = '100%';
-    container.style.height = '100%';
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.justifyContent = 'center';
-    
-    const img = document.createElement('img');
-    img.style.maxWidth = '100%';
-    img.style.maxHeight = '100%';
-    img.style.objectFit = 'contain';
-    
-    // If it's already a blob URL or starts with file://, use it as is
-    if (src.startsWith('blob:') || src.startsWith('file://')) {
-        img.src = src;
-    } else {
-        img.src = 'file://' + src;
-    }
-    
-    // Add error handling
-    img.onerror = (e) => {
-        console.error('Error loading image:', e);
-        container.innerHTML = `<div class="error">Error loading image: ${src}</div>`;
-    };
-    
-    container.appendChild(img);
-    
-    // Only clear photo area
-    elements.photoArea.innerHTML = '';
-    elements.photoArea.appendChild(container);
-    
-    // Log for debugging
-    console.log('Displaying image with src:', img.src);
 }
 
-function createMediaControls(media) {
-    const controls = document.createElement('div');
-    controls.className = 'media-controls';
-    controls.style.display = 'flex';
-    controls.style.alignItems = 'center';
-    controls.style.gap = '15px';
-    controls.style.padding = '10px';
-    controls.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-    controls.style.borderRadius = '8px';
-    controls.style.margin = '10px 0';
-    
-    // Rewind button
-    const rewindBtn = document.createElement('button');
-    rewindBtn.innerHTML = '⏪';
-    rewindBtn.title = 'Rewind 10 seconds';
-    rewindBtn.onclick = () => {
-        media.currentTime = Math.max(0, media.currentTime - 10);
-    };
-    
-    // Play/Pause button
-    const playBtn = document.createElement('button');
-    playBtn.innerHTML = '⏯️';
-    playBtn.title = 'Play/Pause';
-    playBtn.onclick = () => {
-        if (media.paused) {
-            media.play();
-            playBtn.innerHTML = '⏸️';
+async function initializeVideoControls(video) {
+    const videoControls = document.createElement('div');
+    videoControls.className = 'video-controls';
+    videoControls.style.width = '100%';
+    videoControls.style.padding = '10px';
+    videoControls.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    videoControls.style.position = 'absolute';
+    videoControls.style.bottom = '0';
+    videoControls.style.left = '0';
+    videoControls.style.display = 'flex';
+    videoControls.style.alignItems = 'center';
+    videoControls.style.gap = '10px';
+    videoControls.style.transition = 'opacity 0.3s';
+
+    // Create play/pause button with async state handling and clear state indication
+    const playPauseBtn = document.createElement('button');
+    playPauseBtn.className = 'play-pause-btn';
+    playPauseBtn.style.padding = '8px 16px';
+    playPauseBtn.style.borderRadius = '4px';
+    playPauseBtn.style.border = 'none';
+    playPauseBtn.style.fontSize = '16px';
+    playPauseBtn.style.fontWeight = 'bold';
+    playPauseBtn.style.minWidth = '80px';
+    playPauseBtn.style.display = 'flex';
+    playPauseBtn.style.alignItems = 'center';
+    playPauseBtn.style.justifyContent = 'center';
+    playPauseBtn.style.gap = '6px';
+
+    const updatePlayPauseState = (isPlaying) => {
+        if (isPlaying) {
+            playPauseBtn.innerHTML = '<span>⏸</span><span>Pause</span>';
+            playPauseBtn.style.backgroundColor = '#ff4444';
+            playPauseBtn.style.color = 'white';
         } else {
-            media.pause();
-            playBtn.innerHTML = '▶️';
+            playPauseBtn.innerHTML = '<span>▶</span><span>Play</span>';
+            playPauseBtn.style.backgroundColor = '#44ff44';
+            playPauseBtn.style.color = 'black';
         }
     };
-    
-    // Forward button
-    const forwardBtn = document.createElement('button');
-    forwardBtn.innerHTML = '⏩';
-    forwardBtn.title = 'Forward 10 seconds';
-    forwardBtn.onclick = () => {
-        media.currentTime = Math.min(media.duration, media.currentTime + 10);
+
+    // Set initial state
+    updatePlayPauseState(!video.paused);
+
+    playPauseBtn.onclick = async () => {
+        try {
+            if (video.paused) {
+                await video.play();
+            } else {
+                await video.pause();
+            }
+        } catch (error) {
+            console.error('Error toggling play state:', error);
+        }
     };
-    
-    // Time display
+
+    // Handle async state changes
+    video.addEventListener('play', () => updatePlayPauseState(true));
+    video.addEventListener('pause', () => updatePlayPauseState(false));
+
+    // Time display with async updates
     const timeDisplay = document.createElement('span');
     timeDisplay.style.color = 'white';
-    timeDisplay.style.fontFamily = 'monospace';
-    timeDisplay.style.fontSize = '14px';
-    timeDisplay.style.minWidth = '140px';
+    timeDisplay.style.minWidth = '100px';
     timeDisplay.style.textAlign = 'center';
-    
-    // Progress bar container
+
+    // Progress container with async seeking
     const progressContainer = document.createElement('div');
     progressContainer.style.flex = '1';
-    progressContainer.style.height = '8px';
+    progressContainer.style.height = '5px';
     progressContainer.style.backgroundColor = '#444';
-    progressContainer.style.borderRadius = '4px';
     progressContainer.style.cursor = 'pointer';
     progressContainer.style.position = 'relative';
-    
-    // Progress bar
+    progressContainer.style.borderRadius = '2px';
+
     const progress = document.createElement('div');
     progress.style.width = '0%';
     progress.style.height = '100%';
     progress.style.backgroundColor = '#2196F3';
-    progress.style.borderRadius = '4px';
+    progress.style.borderRadius = '2px';
     progress.style.transition = 'width 0.1s';
     progressContainer.appendChild(progress);
-    
-    // Volume control
+
+    // Async timeline seeking
+    progressContainer.addEventListener('click', async (e) => {
+        const rect = progressContainer.getBoundingClientRect();
+        const pos = (e.clientX - rect.left) / rect.width;
+        try {
+            video.currentTime = pos * video.duration;
+        } catch (error) {
+            console.error('Error seeking:', error);
+        }
+    });
+
+    // Async time preview
+    let timeUpdateDebounce;
+    progressContainer.addEventListener('mousemove', (e) => {
+        clearTimeout(timeUpdateDebounce);
+        timeUpdateDebounce = setTimeout(() => {
+            const rect = progressContainer.getBoundingClientRect();
+            const pos = (e.clientX - rect.left) / rect.width;
+            const time = pos * video.duration;
+            timeDisplay.textContent = `${formatTime(time)} / ${formatTime(video.duration)}`;
+        }, 50);
+    });
+
+    progressContainer.addEventListener('mouseout', () => {
+        clearTimeout(timeUpdateDebounce);
+        timeDisplay.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+    });
+
+    // Volume control with async state
     const volumeContainer = document.createElement('div');
     volumeContainer.style.display = 'flex';
     volumeContainer.style.alignItems = 'center';
     volumeContainer.style.gap = '5px';
-    
+
     const volumeIcon = document.createElement('button');
-    volumeIcon.innerHTML = '🔊';
-    volumeIcon.title = 'Mute/Unmute';
-    volumeIcon.onclick = () => {
-        media.muted = !media.muted;
-        volumeIcon.innerHTML = media.muted ? '🔇' : '🔊';
+    volumeIcon.innerHTML = video.muted ? '🔇' : '🔊';
+    volumeIcon.onclick = async () => {
+        try {
+            video.muted = !video.muted;
+            volumeIcon.innerHTML = video.muted ? '🔇' : '🔊';
+        } catch (error) {
+            console.error('Error toggling mute:', error);
+        }
     };
-    
+
     const volumeSlider = document.createElement('input');
     volumeSlider.type = 'range';
     volumeSlider.min = '0';
     volumeSlider.max = '1';
     volumeSlider.step = '0.1';
-    volumeSlider.value = '1';
+    volumeSlider.value = video.volume;
     volumeSlider.style.width = '80px';
-    volumeSlider.onchange = () => {
-        media.volume = volumeSlider.value;
-        volumeIcon.innerHTML = volumeSlider.value === '0' ? '🔇' : '🔊';
+    volumeSlider.onchange = async () => {
+        try {
+            video.volume = volumeSlider.value;
+            volumeIcon.innerHTML = volumeSlider.value === '0' ? '🔇' : '🔊';
+        } catch (error) {
+            console.error('Error changing volume:', error);
+        }
     };
-    
-    // Update time display and progress bar
-    media.ontimeupdate = () => {
-        const current = formatTime(media.currentTime);
-        const total = formatTime(media.duration);
-        timeDisplay.textContent = `${current} / ${total}`;
-        progress.style.width = `${(media.currentTime / media.duration) * 100}%`;
-    };
-    
-    // Click handler for progress bar
-    progressContainer.onclick = (e) => {
-        const rect = progressContainer.getBoundingClientRect();
-        const pos = (e.clientX - rect.left) / rect.width;
-        media.currentTime = pos * media.duration;
-    };
-    
-    // Add all controls to the container
-    controls.append(
-        rewindBtn,
-        playBtn,
-        forwardBtn,
-        timeDisplay,
+
+    // Async time updates
+    let progressUpdateDebounce;
+    video.addEventListener('timeupdate', () => {
+        clearTimeout(progressUpdateDebounce);
+        progressUpdateDebounce = setTimeout(() => {
+            timeDisplay.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+            progress.style.width = `${(video.currentTime / video.duration) * 100}%`;
+        }, 50);
+    });
+
+    // Add all controls
+    videoControls.append(
+        playPauseBtn,
         progressContainer,
+        timeDisplay,
         volumeIcon,
         volumeSlider
     );
-    
-    // Style all buttons consistently
-    controls.querySelectorAll('button').forEach(button => {
-        button.style.backgroundColor = 'transparent';
-        button.style.border = 'none';
-        button.style.color = 'white';
-        button.style.fontSize = '20px';
-        button.style.cursor = 'pointer';
-        button.style.padding = '5px 10px';
-        button.style.transition = 'transform 0.1s';
-        
-        // Hover effect
-        button.onmouseenter = () => {
-            button.style.transform = 'scale(1.1)';
-        };
-        button.onmouseleave = () => {
-            button.style.transform = 'scale(1)';
-        };
-    });
-    
-    return controls;
+
+    return videoControls;
 }
 
 // Helper function to format time in MM:SS format

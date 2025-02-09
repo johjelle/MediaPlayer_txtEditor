@@ -57,6 +57,7 @@ app.on('window-all-closed', function () {
 })
 
 // Scan directory function
+// Modified scanDirectory function for main.js
 function scanDirectory(dirPath) {
     console.log('Scanning directory:', dirPath);
     try {
@@ -64,18 +65,28 @@ function scanDirectory(dirPath) {
         const structure = [];
 
         items.forEach(item => {
+            // Skip hidden files and directories (those starting with '.')
+            if (item.startsWith('.')) {
+                console.log('Skipping hidden item:', item);
+                return;
+            }
+
             try {
                 const fullPath = path.join(dirPath, item);
                 const stats = fs.statSync(fullPath);
                 
                 if (stats.isDirectory()) {
                     console.log('Found directory:', item);
-                    structure.push({
-                        type: 'directory',
-                        name: item,
-                        path: fullPath,
-                        children: scanDirectory(fullPath)
-                    });
+                    const children = scanDirectory(fullPath);
+                    // Only add directory if it has visible children or is empty
+                    if (children.length > 0 || fs.readdirSync(fullPath).some(f => !f.startsWith('.'))) {
+                        structure.push({
+                            type: 'directory',
+                            name: item,
+                            path: fullPath,
+                            children: children
+                        });
+                    }
                 } else {
                     const ext = path.extname(item).toLowerCase();
                     let type = 'file';

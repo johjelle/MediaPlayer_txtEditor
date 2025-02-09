@@ -2,6 +2,101 @@
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => e.preventDefault());
 
+// Add AudioPlayer class to handle audio files:
+
+class AudioPlayer {
+    constructor(container, audioPath) {
+        this.container = container;
+        this.audio = new Audio();
+        this.audio.src = 'file://' + audioPath;
+        
+        this.createInterface();
+        this.attachEventListeners();
+    }
+    
+    createInterface() {
+        this.container.innerHTML = '';
+        
+        // Create audio container
+        const audioContainer = document.createElement('div');
+        audioContainer.className = 'audio-container';
+        
+        // Create waveform container
+        const waveformContainer = document.createElement('div');
+        waveformContainer.className = 'waveform-container';
+        
+        // Create controls
+        const controls = document.createElement('div');
+        controls.className = 'media-controls';
+        controls.innerHTML = `
+            <button class="play-pause">▶</button>
+            <span class="time-display">00:00 / 00:00</span>
+            <input type="range" class="seek-slider" min="0" max="100" value="0">
+            <button class="mute">🔊</button>
+            <input type="range" class="volume-slider" min="0" max="100" value="100">
+        `;
+        
+        audioContainer.appendChild(waveformContainer);
+        audioContainer.appendChild(controls);
+        this.container.appendChild(audioContainer);
+        
+        // Store references
+        this.playPauseBtn = controls.querySelector('.play-pause');
+        this.timeDisplay = controls.querySelector('.time-display');
+        this.seekSlider = controls.querySelector('.seek-slider');
+        this.muteBtn = controls.querySelector('.mute');
+        this.volumeSlider = controls.querySelector('.volume-slider');
+    }
+    
+    attachEventListeners() {
+        // Play/Pause
+        this.playPauseBtn.onclick = () => {
+            if (this.audio.paused) {
+                this.audio.play();
+            } else {
+                this.audio.pause();
+            }
+        };
+        
+        // Update play/pause button
+        this.audio.onplay = () => this.playPauseBtn.textContent = '⏸';
+        this.audio.onpause = () => this.playPauseBtn.textContent = '▶';
+        
+        // Time update
+        this.audio.ontimeupdate = () => {
+            const current = formatTime(this.audio.currentTime);
+            const total = formatTime(this.audio.duration);
+            this.timeDisplay.textContent = `${current} / ${total}`;
+            this.seekSlider.value = (this.audio.currentTime / this.audio.duration) * 100;
+        };
+        
+        // Seeking
+        this.seekSlider.oninput = () => {
+            const time = (this.seekSlider.value / 100) * this.audio.duration;
+            this.audio.currentTime = time;
+        };
+        
+        // Volume control
+        this.volumeSlider.oninput = () => {
+            this.audio.volume = this.volumeSlider.value / 100;
+            this.muteBtn.textContent = this.audio.volume === 0 ? '🔈' : '🔊';
+        };
+        
+        // Mute toggle
+        this.muteBtn.onclick = () => {
+            this.audio.muted = !this.audio.muted;
+            this.muteBtn.textContent = this.audio.muted ? '🔈' : '🔊';
+        };
+    }
+    
+    destroy() {
+        this.audio.pause();
+        this.audio.src = '';
+        this.container.innerHTML = '';
+    }
+}
+
+
 // Audio Waveform Visualization Class
 class AudioWaveform {
     constructor(container, audioElement) {
@@ -201,6 +296,60 @@ function setupDefaultLogo() {
 
 async function showMedia(file) {
     elements.currentFile.textContent = file.name;
+    
+    if (file.type === 'image') {
+        try {
+            // Clear previous content
+            elements.videoArea.innerHTML = '';
+            
+            // Create image container
+            const container = document.createElement('div');
+            container.className = 'image-container';
+            
+            // Read and process the image file
+            const imageBuffer = await window.api.readFile(file.path);
+            const processedBuffer = await window.api.processImage(imageBuffer);
+            
+            // Create blob URL from processed buffer
+            const blob = new Blob([processedBuffer], { type: 'image/jpeg' });
+            const imageUrl = URL.createObjectURL(blob);
+            
+            // Create and setup image element
+            const img = document.createElement('img');
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100%';
+            img.style.objectFit = 'contain';
+            
+            // Handle load and error events
+            img.onload = () => URL.revokeObjectURL(imageUrl);
+            img.onerror = (error) => {
+                console.error('Error loading image:', error);
+                container.innerHTML = `
+                    <div class="error-message">
+                        <p>Error loading image</p>
+                        <button onclick="window.api.openExternal('file://${file.path}')">
+                            Open in Default Viewer
+                        </button>
+                    </div>`;
+            };
+            
+            img.src = imageUrl;
+            container.appendChild(img);
+            elements.videoArea.appendChild(container);
+            
+        } catch (error) {
+            console.error('Error processing image:', error);
+            elements.videoArea.innerHTML = `
+                <div class="error-message">
+                    <p>Error processing image: ${error.message}</p>
+                    <button onclick="window.api.openExternal('file://${file.path}')">
+                        Open in Default Viewer
+                    </button>
+                </div>`;
+        }
+    }
+    // ... rest of the showMedia function remains unchanged
+}
     
     if (file.type === 'video') {
         // Clear video area and show loading state
@@ -434,6 +583,43 @@ function formatTime(seconds) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
+
+function getFileType(filename) {
+    const ext = window.api.extname(filename).toLowerCase();
+    
+    // Improved image type detection
+    if (['.jpg', '.jpeg', '.png', '.tif', '.tiff'].includes(ext)) {
+        return 'image';
+    }
+    // Improved video type detection
+    if (['.mp4', '.avi', '.mov', '.mkv', '.webm'].includes(ext)) {
+        return 'video';
+    }
+    // Improved audio type detection
+    if (['.mp3', '.wav', '.ogg', '.m4a'].includes(ext)) {
+        return 'audio';
+    }
+    if (ext === '.txt') {
+        return 'transcript';
+    }
+    return 'file';
+}
+
+// Updated preload API functions for image processing
+const imageAPI = {
+    processImage: async (buffer) => {
+        try {
+            const processedBuffer = await sharp(buffer)
+                .rotate() // Automatically rotate based on EXIF
+                .toBuffer();
+            return processedBuffer;
+        } catch (error) {
+            console.error('Error processing image:', error);
+            throw error;
+        }
+    }
+};
+
 async function handleFileClick(file) {
     const newFolderNumber = getFolderNumber(file.name);
     
@@ -456,6 +642,39 @@ async function handleFileClick(file) {
             console.error('Error reading transcript:', error);
             alert('Error reading transcript file');
         }
+// 3. Update showMedia function to handle audio files:
+
+if (file.type === 'audio') {
+    if (state.currentWaveform) {
+        state.currentWaveform.destroy();
+    }
+    elements.videoArea.innerHTML = '';
+    state.currentWaveform = new AudioPlayer(elements.videoArea, file.path);
+}
+
+// 4. Update the getFileType function to properly handle all file types:
+
+function getFileType(filename) {
+    const ext = window.api.extname(filename).toLowerCase();
+    
+    // Extended image formats support
+    if (['.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.bmp', '.webp'].includes(ext)) {
+        return 'image';
+    }
+    // Extended video formats support
+    if (['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv'].includes(ext)) {
+        return 'video';
+    }
+    // Extended audio formats support
+    if (['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.wma'].includes(ext)) {
+        return 'audio';
+    }
+    if (ext === '.txt') {
+        return 'transcript';
+    }
+    return 'file';
+}
+
     } else if (file.type === 'image' || file.type === 'video' || file.type === 'audio') {
         const dirPath = window.api.dirname(file.path);
         const files = window.api.readdirSync(dirPath);
